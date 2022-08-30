@@ -1,0 +1,11 @@
+# -*- mode: org -*-
+
+Formalizar funções recursivas em Lean, depois implementar máquinas de
+turing nele.
+
+- já formalizadas em https://arxiv.org/pdf/1810.08380.pdf
+
++ potencialmente fazer provas do livro tb
+
+- em agda, sem mtos bells & whistles:
+  https://gist.github.com/andrejbauer/63a03c1c00a4c7e0b2580552b2e00953
