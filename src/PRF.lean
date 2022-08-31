@@ -7,13 +7,13 @@ inductive Vector (α : Type u) : Nat → Type u where
   | nil  : Vector α 0
   | cons : α → {n : Nat} → Vector α n → Vector α (n + 1)
 
--- structure IList (α : Type u) (n : Nat) where
---   val  : List α
---   size : List.length val = n
-
 def Vector.get {α : Type u} : (as : Vector α n) → Fin n → α
   | cons a _,  ⟨0, _⟩ => a
   | cons _ as, ⟨Nat.succ i, h⟩ => get as ⟨i, Nat.le_of_succ_le_succ h⟩
+
+def Vector.fromList {α : Type u} : (as : List α) → Vector α (List.length as)
+  | [] => Vector.nil
+  | x :: xs => Vector.cons x (Vector.fromList xs)
 
 def enumeration {α : Type u} : Vector α n → (Fin n → α)
   | as => λ i => Vector.get as i
@@ -25,6 +25,14 @@ inductive PRF : Nat → Type where
   | comp    : {m k : Nat} → PRF m → (Fin m → PRF k) → PRF k -- composition
   | primrec : {n : Nat} → PRF n → PRF (n + 2) → PRF (n + 1) -- primitive recursion
 
+--. composition:
+-- If g is a function of m-variables and h₁ ... , hₘ are functions of k variables,
+-- which are already defined, then composition yields the function
+-- f(x) = g(h₁(x*),...,hₘ(x*))
+--. primitive recursion:
+-- f(0, x*) = g(x*)
+-- f(n + 1, x*) = h(f(n, x*), n, x*)
+
 def PRF.ToString : PRF n → String
   | PRF.zero => "zero"
   | PRF.succ => "succ"
@@ -34,14 +42,6 @@ def PRF.ToString : PRF n → String
 
 instance : ToString (PRF n) :=
   ⟨PRF.ToString⟩
-
---. composition:
--- If g is a function of m-variables and h₁ ... , hₘ are functions of k variables,
--- which are already defined, then composition yields the function
--- f(x) = g(h₁(x*),...,hₘ(x*))
---. primitive recursion:
--- f(0, x*) = g(x*)
--- f(n + 1, x*) = h(f(n, x*), n, x*)
 
 def PRF.arity (_ : PRF a) : Nat := a
 
@@ -125,23 +125,74 @@ def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
          | PRF.primrec g h =>
            match ns with
            | [] => wrongNumberOfArguments "primrec" 1 0
-           | 0 :: _ => evaluate gas g ns
-           | _ :: _ =>
-             match evaluate gas f ns with
+           | 0 :: ns => evaluate gas g ns
+           | (n + 1) :: ns =>
+             match evaluate gas f (n :: ns) with
              | outOfGas => outOfGas
              | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
-             | ok fn => evaluate gas h (fn :: ns)
+             | ok fn => evaluate gas h (fn :: n :: ns)
 
+
+def PRF.comp1 : PRF 1 → PRF k → PRF k
+  | g, h => PRF.comp g (λ _ => h)
+
+def PRF.comp2 : PRF 2 → PRF k → PRF k → PRF k
+  | g, h, i =>
+    PRF.comp
+      g
+      (λ n =>
+        match n with
+        | {val := 0, isLt := _} => h
+        | {val := 1, isLt := _} => i
+        | {val := n + 2, isLt} => by contradiction)
 
 def PRF.identity : PRF 1 := PRF.proj 0
+
+def PRF.first : PRF (n + 1) := PRF.proj 0
 
 def PRF.const {k : Nat} : Nat → PRF k
   | 0 =>
       PRF.comp PRF.zero (λ {isLt := zeroltzero} =>
                            by contradiction)
   | n+1 =>
-      PRF.comp PRF.succ (λ _ => @PRF.const k n)
+      PRF.comp1 PRF.succ (@PRF.const k n)
+
+def PRF.add : PRF 2 :=
+  PRF.primrec
+    PRF.identity
+    (PRF.comp1 PRF.succ PRF.first)
+
+def PRF.mul : PRF 2 :=
+  PRF.primrec
+    (PRF.const 0)
+    (PRF.comp2 PRF.add (PRF.proj 0) (PRF.proj 2))
+
+def PRF.signal : PRF 1 :=
+  PRF.primrec
+    (PRF.const 0)
+    (PRF.const 1)
+
+def PRF.not : PRF 1 :=
+  PRF.primrec
+    (PRF.const 1)
+    (PRF.const 0)
+
+def PRF.if : PRF k → PRF k → PRF k → PRF k
+  | t, f, g =>
+    PRF.comp2
+      PRF.add
+      (PRF.comp2 PRF.mul t f)
+      (PRF.comp2 PRF.mul (PRF.comp1 PRF.not t) g)
 
 #check 0
-#eval finRange 10
-#eval evaluate 10 (@PRF.const 3 1) [19, 32, 20]
+-- #eval finRange 10
+--#eval evaluate 10 (@PRF.const 3 1) [19, 32]
+--#eval evaluate 100 PRF.add [32, 1]
+--#eval evaluate 100 PRF.mul [3, 0]
+#eval evaluate 100 PRF.mul [3, 1]
+--#eval evaluate 100 PRF.mul [20, 2]
+#eval evaluate 100 PRF.mul [3, 35]
+-- #eval evaluate 100 PRF.signal [10]
+-- #eval evaluate 100 PRF.signal [0]
+-- #eval evaluate 100 PRF.signal [3,3]
+#eval evaluate 10 (PRF.if PRF.signal PRF.signal PRF.not) [2]
