@@ -1,11 +1,12 @@
 # -*- mode: org -*-
 
-Formalizar funções recursivas em Lean, depois implementar máquinas de
-turing nele.
+Primitive Recursive Functions implemented in Lean 4 (commit
+392c72db86). Following the ‘Computability’ book by Richard L. Epstein
+and Walter A. Carnielli.
 
-- já formalizadas em https://arxiv.org/pdf/1810.08380.pdf
 
-+ potencialmente fazer provas do livro tb
+* Related work
+- Similar Agda implementation by Andrej Bauer [[[https://gist.github.com/andrejbauer/63a03c1c00a4c7e0b2580552b2e00953][gist]]]
 
-- em agda, sem mtos bells & whistles:
-  https://gist.github.com/andrejbauer/63a03c1c00a4c7e0b2580552b2e00953
+- ‘Formalizing computability theory via partial recursive functions’
+  by M. Carneiro (also in Lean) [[[https://arxiv.org/pdf/1810.08380.pdf][pdf]]]
