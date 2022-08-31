@@ -7,37 +7,55 @@ inductive Vector (α : Type u) : Nat → Type u where
   | nil  : Vector α 0
   | cons : α → {n : Nat} → Vector α n → Vector α (n + 1)
 
-structure IList (α : Type u) (n : Nat) where
-  val  : List α
-  size : List.length val = n
+-- structure IList (α : Type u) (n : Nat) where
+--   val  : List α
+--   size : List.length val = n
 
 def Vector.get {α : Type u} : (as : Vector α n) → Fin n → α
   | cons a _,  ⟨0, _⟩ => a
   | cons _ as, ⟨Nat.succ i, h⟩ => get as ⟨i, Nat.le_of_succ_le_succ h⟩
 
+def enumeration {α : Type u} : Vector α n → (Fin n → α)
+  | as => λ i => Vector.get as i
+
 inductive PRF : Nat → Type where
-  | zero : PRF 0
-  | succ : PRF 1
-  | proj : {n : Nat} → Fin n → PRF n
-  | comp : {m k : Nat} → PRF m → (Fin m → PRF k) → PRF k
+  | zero    : PRF 0
+  | succ    : PRF 1
+  | proj    : {n : Nat} → Fin n → PRF n -- projection
+  | comp    : {m k : Nat} → PRF m → (Fin m → PRF k) → PRF k -- composition
+  | primrec : {n : Nat} → PRF n → PRF (n + 2) → PRF (n + 1) -- primitive recursion
+
+def PRF.ToString : PRF n → String
+  | PRF.zero => "zero"
+  | PRF.succ => "succ"
+  | PRF.proj {val := n, isLt := _} => s!"proj_{n}"
+  | PRF.comp g _h => s!"{ToString g}∘"
+  | PRF.primrec b c => s!"primrec({ToString b}, {ToString c})"
+
+instance : ToString (PRF n) :=
+  ⟨PRF.ToString⟩
+
+--. composition:
+-- If g is a function of m-variables and h₁ ... , hₘ are functions of k variables,
+-- which are already defined, then composition yields the function
+-- f(x) = g(h₁(x*),...,hₘ(x*))
+--. primitive recursion:
+-- f(0, x*) = g(x*)
+-- f(n + 1, x*) = h(f(n, x*), n, x*)
 
 def PRF.arity (_ : PRF a) : Nat := a
 
--- If g is a function of m-variables and h₁ ... , hm are functions of k variables,
--- which are already defined, then composition yields the function
--- f(x) = g(h₁(x*),...,hm(x*))
-
 def finRangeAux : (m : Nat) → m < n → List (Fin n) → List (Fin n)
-  | 0, _, ns => ns
+  | 0, zeroLTn, ns => {val := 0, isLt := zeroLTn} :: ns
   | succ m, succmLTn, ns =>
        let mLTn := Nat.lt_trans Nat.le.refl succmLTn
-       finRangeAux m mLTn ({val := m, isLt := mLTn} :: ns)
+       finRangeAux m mLTn ({val := succ m, isLt := succmLTn} :: ns)
 
 def finRange : (n : Nat) -> List (Fin n)
   | zero => []
   | succ n => finRangeAux n Nat.le.refl []
 
-@[simp] theorem rangeSizeIsN : ∀ (n : Nat), List.length (finRange n) = n := sorry
+-- @[simp] theorem rangeSizeIsN : ∀ (n : Nat), List.length (finRange n) = n := sorry
 --   | 0 =>
 --     calc
 --       List.length (finRange 0)
@@ -49,38 +67,81 @@ def finRange : (n : Nat) -> List (Fin n)
 --         = succ (List.length (finRange n)) := by rw [_]
 --       _ = succ n := _
 
-def IListFinRange : (n : Nat) → IList (Fin n) n
-  | n => { val := finRange n, size := rangeSizeIsN n}
+-- def IListFinRange : (n : Nat) → IList (Fin n) n
+--   | n => { val := finRange n, size := rangeSizeIsN n}
 
 def List.lookupIdx : List α → Nat → Option α
   | [],    _   => none
   | a::_, 0   => some a
   | _::as, n+1 => lookupIdx as n
 
-def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : Option Nat :=
+inductive EvalResult (α : Type u) where
+  | outOfGas : EvalResult α
+  | wrongNumberOfArguments (fn : String) (expected : Nat) (got : Nat) : EvalResult α
+  | ok (val : α) : EvalResult α
+  deriving Repr
+
+export EvalResult (outOfGas wrongNumberOfArguments ok)
+
+instance {α : Type u} [ToString α] : ToString (EvalResult α) :=
+  ⟨fun r =>
+  match r with
+  | outOfGas => "Out of gas."
+  | wrongNumberOfArguments fn expected got => s!"Wrong number of arguments for function {fn}: expected {expected} but got {got}"
+  | ok r => s!"ok: {r}"⟩
+
+
+
+def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
   match gas with
-  | zero => none
+  | zero => outOfGas
   | succ gas =>
          match f with
-         | PRF.zero => some 0
+         | PRF.zero => ok 0
          | PRF.succ =>
                     match ns with
-                    | List.cons n [] => some (n + 1)
-                    | _ => none
-         | PRF.proj i => List.lookupIdx ns i
+                    | List.cons n [] => ok (n + 1)
+                    | _ => wrongNumberOfArguments "succ" 1 (List.length ns)
+         | PRF.proj i =>
+           match List.lookupIdx ns i with
+           | some n => ok n
+           | none => wrongNumberOfArguments "proj" i (List.length ns)
          | PRF.comp g hs =>
                     let mAs := List.foldr
                                 (λ i acc =>
                                   match acc with
-                                  | none => none
-                                  | some as =>
+                                  | ok as =>
                                     match evaluate gas (hs i) ns with
-                                    | none => none
-                                    | some a => some <| a :: as)
-                                (some [])
-                                (finRange (PRF.arity g))
+                                    | ok a => ok <| a :: as
+                                    | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
+                                    | outOfGas => outOfGas
+                                  | err => err)
+                                (ok [])
+                                (finRange <| PRF.arity g)
                     match mAs with
-                    | none => none
-                    | some as => evaluate gas g as
+                    | ok as => evaluate gas g as
+                    | outOfGas => outOfGas
+                    | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
+         | PRF.primrec g h =>
+           match ns with
+           | [] => wrongNumberOfArguments "primrec" 1 0
+           | 0 :: _ => evaluate gas g ns
+           | _ :: _ =>
+             match evaluate gas f ns with
+             | outOfGas => outOfGas
+             | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
+             | ok fn => evaluate gas h (fn :: ns)
 
-#eval List.range 1
+
+def PRF.identity : PRF 1 := PRF.proj 0
+
+def PRF.const {k : Nat} : Nat → PRF k
+  | 0 =>
+      PRF.comp PRF.zero (λ {isLt := zeroltzero} =>
+                           by contradiction)
+  | n+1 =>
+      PRF.comp PRF.succ (λ _ => @PRF.const k n)
+
+#check 0
+#eval finRange 10
+#eval evaluate 10 (@PRF.const 3 1) [19, 32, 20]
