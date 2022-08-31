@@ -7,16 +7,13 @@ inductive Vector (α : Type u) : Nat → Type u where
   | nil  : Vector α 0
   | cons : α → {n : Nat} → Vector α n → Vector α (n + 1)
 
+structure IList (α : Type u) (n : Nat) where
+  val  : List α
+  size : List.length val = n
+
 def Vector.get {α : Type u} : (as : Vector α n) → Fin n → α
   | cons a _,  ⟨0, _⟩ => a
   | cons _ as, ⟨Nat.succ i, h⟩ => get as ⟨i, Nat.le_of_succ_le_succ h⟩
-
--- inductive PR : (Vector Nat n → Nat) → Prop
---   | zero : PR (λ _ => 0)
---   | succ : PR (λ ns : Vector Nat 1 =>
---                  match ns with
---                  | Vector.cons n Vector.nil => n + 1)
---  | proj : PR
 
 inductive PRF : Nat → Type where
   | zero : PRF 0
@@ -40,7 +37,27 @@ def finRange : (n : Nat) -> List (Fin n)
   | zero => []
   | succ n => finRangeAux n Nat.le.refl []
 
-def evaluate (gas : Nat) (f : PRF a) (ns : Vector Nat a) : Option Nat :=
+@[simp] theorem rangeSizeIsN : ∀ (n : Nat), List.length (finRange n) = n := sorry
+--   | 0 =>
+--     calc
+--       List.length (finRange 0)
+--         = List.length [] := by rw [finRange]
+--       _ = 0 := by rfl
+--   | succ n =>
+--     calc
+--       List.length (finRange (succ n))
+--         = succ (List.length (finRange n)) := by rw [_]
+--       _ = succ n := _
+
+def IListFinRange : (n : Nat) → IList (Fin n) n
+  | n => { val := finRange n, size := rangeSizeIsN n}
+
+def List.lookupIdx : List α → Nat → Option α
+  | [],    _   => none
+  | a::_, 0   => some a
+  | _::as, n+1 => lookupIdx as n
+
+def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : Option Nat :=
   match gas with
   | zero => none
   | succ gas =>
@@ -48,17 +65,22 @@ def evaluate (gas : Nat) (f : PRF a) (ns : Vector Nat a) : Option Nat :=
          | PRF.zero => some 0
          | PRF.succ =>
                     match ns with
-                    | Vector.cons n Vector.nil => some (n + 1)
-         | PRF.proj i => some (Vector.get ns i)
+                    | List.cons n [] => some (n + 1)
+                    | _ => none
+         | PRF.proj i => List.lookupIdx ns i
          | PRF.comp g hs =>
-                    let as := List.foldr
-                                (λ i acc => match acc with
-                                            | none => none
-                                            | some rs => match evaluate gas (hs i) ns with
-                                                         | none => none
-                                                         | some r => some <| Vector.cons r rs)
-                                (some Vector.nil)
+                    let mAs := List.foldr
+                                (λ i acc =>
+                                  match acc with
+                                  | none => none
+                                  | some as =>
+                                    match evaluate gas (hs i) ns with
+                                    | none => none
+                                    | some a => some <| a :: as)
+                                (some [])
                                 (finRange (PRF.arity g))
-                    match as with
+                    match mAs with
                     | none => none
                     | some as => evaluate gas g as
+
+#eval List.range 1
