@@ -55,21 +55,6 @@ def finRange : (n : Nat) -> List (Fin n)
   | zero => []
   | succ n => finRangeAux n Nat.le.refl []
 
--- @[simp] theorem rangeSizeIsN : ∀ (n : Nat), List.length (finRange n) = n := sorry
---   | 0 =>
---     calc
---       List.length (finRange 0)
---         = List.length [] := by rw [finRange]
---       _ = 0 := by rfl
---   | succ n =>
---     calc
---       List.length (finRange (succ n))
---         = succ (List.length (finRange n)) := by rw [_]
---       _ = succ n := _
-
--- def IListFinRange : (n : Nat) → IList (Fin n) n
---   | n => { val := finRange n, size := rangeSizeIsN n}
-
 def List.lookupIdx : List α → Nat → Option α
   | [],    _   => none
   | a::_, 0   => some a
@@ -150,6 +135,8 @@ def PRF.identity : PRF 1 := PRF.proj 0
 
 def PRF.first : PRF (n + 1) := PRF.proj 0
 
+def PRF.second : PRF (n + 2) := PRF.proj 1
+
 def PRF.const {k : Nat} : Nat → PRF k
   | 0 =>
       PRF.comp PRF.zero (λ {isLt := zeroltzero} =>
@@ -184,15 +171,17 @@ def PRF.if : PRF k → PRF k → PRF k → PRF k
       (PRF.comp2 PRF.mul t f)
       (PRF.comp2 PRF.mul (PRF.comp1 PRF.not t) g)
 
-#check 0
+--#eval evaluate 10 (PRF.if PRF.first PRF.first PRF.not) [2]
+
+-- #check 0
 -- #eval finRange 10
 --#eval evaluate 10 (@PRF.const 3 1) [19, 32]
 --#eval evaluate 100 PRF.add [32, 1]
 --#eval evaluate 100 PRF.mul [3, 0]
-#eval evaluate 100 PRF.mul [3, 1]
+--#eval evaluate 100 PRF.mul [3, 1]
 --#eval evaluate 100 PRF.mul [20, 2]
-#eval evaluate 100 PRF.mul [3, 35]
+--#eval evaluate 100 PRF.mul [3, 35]
 -- #eval evaluate 100 PRF.signal [10]
 -- #eval evaluate 100 PRF.signal [0]
 -- #eval evaluate 100 PRF.signal [3,3]
-#eval evaluate 10 (PRF.if PRF.signal PRF.signal PRF.not) [2]
+
