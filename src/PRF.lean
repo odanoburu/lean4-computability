@@ -154,10 +154,22 @@ def PRF.mul : PRF 2 :=
     (PRF.const 0)
     (PRF.comp2 PRF.add (PRF.proj 0) (PRF.proj 2))
 
+def PRF.pred : PRF 1 :=
+  PRF.primrec (PRF.const 0) PRF.second
+
 def PRF.signal : PRF 1 :=
   PRF.primrec
     (PRF.const 0)
     (PRF.const 1)
+
+def PRF.le : PRF 2 :=
+  PRF.comp1 PRF.signal
+    (PRF.primrec
+      (PRF.comp1 PRF.succ PRF.first)
+      (PRF.comp1 PRF.pred PRF.first))
+
+--#eval evaluate 100 PRF.le [10, 10]
+--#eval evaluate 100 PRF.le [9, 10]
 
 def PRF.not : PRF 1 :=
   PRF.primrec
@@ -185,3 +197,26 @@ def PRF.if : PRF k → PRF k → PRF k → PRF k
 -- #eval evaluate 100 PRF.signal [0]
 -- #eval evaluate 100 PRF.signal [3,3]
 
+
+def PRF.and : PRF 2 :=
+  PRF.comp1 PRF.signal (PRF.if PRF.first PRF.second (PRF.const 0))
+
+--#eval evaluate 100 PRF.and [2, 0]
+
+def PRF.firstLEsat : PRF 1 → PRF 1
+-- finds first number less or equal than input argument that
+-- satisfies predicate p
+  | p =>
+    PRF.comp1 PRF.pred
+      (PRF.primrec
+        (PRF.comp1 PRF.signal (PRF.comp1 p (PRF.const 0)))
+        (PRF.if
+          PRF.first
+          PRF.first
+          (PRF.if
+            (PRF.comp1 p (PRF.comp1 PRF.succ PRF.second))
+            (PRF.comp1 PRF.succ (PRF.comp1 PRF.succ PRF.second))
+            PRF.first)))
+
+--#eval evaluate 1000 (PRF.firstLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [5]
+end PRF
