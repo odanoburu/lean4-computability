@@ -168,7 +168,7 @@ def PRF.if : PRF k → PRF k → PRF k → PRF k
   | t, f, g =>
     PRF.comp2
       PRF.add
-      (PRF.comp2 PRF.mul t f)
+      (PRF.comp2 PRF.mul (PRF.comp1 PRF.signal t) f)
       (PRF.comp2 PRF.mul (PRF.comp1 PRF.not t) g)
 
 --#eval evaluate 10 (PRF.if PRF.first PRF.first PRF.not) [2]
