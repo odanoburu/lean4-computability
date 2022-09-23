@@ -212,6 +212,13 @@ def PRF.le : PRF 2 :=
 -- #eval evaluate 100 PRF.le [10, 10]
 -- #eval evaluate 100 PRF.le [2, 1]
 
+def PRF.lt : PRF 2 :=
+  PRF.comp2 PRF.le (PRF.comp1 PRF.succ PRF.first) PRF.second
+
+--#eval evaluate 100 PRF.lt [9, 10]
+--#eval evaluate 100 PRF.lt [10, 10]
+--#eval evaluate 100 PRF.lt [2, 1]
+
 def PRF.not : PRF 1 :=
   PRF.primrec
     (PRF.const 1)
@@ -231,22 +238,60 @@ def PRF.and : PRF 2 :=
 
 -- #eval evaluate 100 PRF.and [2, 0]
 
-def PRF.firstLEsat : PRF 1 → PRF 1
--- finds first number less or equal than input argument that
+def PRF.fixFirst : PRF k → PRF (k + 1) → PRF k
+  | z, f =>
+    PRF.comp
+      f
+      (λ {val := n, isLt := nLt} =>
+        match n with
+        | 0 => z
+        | n + 1 => PRF.proj {val := n, isLt := Nat.le_of_succ_le_succ nLt
+        })
+
+def PRF.dropFirst : PRF k → PRF (k + 1)
+  | f =>
+    PRF.comp
+      f
+      (λ {val := i, isLt := iLt} =>
+        PRF.proj { val := i + 1
+                 , isLt := Nat.succ_le_succ iLt
+                 })
+
+def PRF.mapNth : Nat → PRF k → PRF k → PRF k
+  | i, g, f =>
+    PRF.comp
+      f
+      (λ {val := n, isLt := nLt} =>
+        if n = i
+        then g
+        else PRF.proj {val := n, isLt := nLt})
+
+def PRF.firstLEsat : PRF (k + 1) → PRF k → PRF k
+-- finds first number less or equal than first input argument that
 -- satisfies predicate p
-  | p =>
-    PRF.comp1 PRF.pred
+  | p, g =>
+    -- we recurse on the first argument, when an index i has p(i,
+    -- x₂, …, xₙ) > 0 we return i + 1; at the top-level we take
+    -- pred, so we have 0 for failure and i + 1 for success with
+    -- index i
+    PRF.comp1
+      PRF.pred
+      (PRF.fixFirst g
       (PRF.primrec
-        (PRF.comp1 PRF.signal (PRF.comp1 p (PRF.const 0)))
+        (PRF.comp1
+          PRF.signal
+          (PRF.fixFirst
+            (PRF.const 0)
+            p))
         (PRF.if
           PRF.first
           PRF.first
           (PRF.if
-            (PRF.comp1 p (PRF.comp1 PRF.succ PRF.second))
-            (PRF.comp1 PRF.succ (PRF.comp1 PRF.succ PRF.second))
-            PRF.first)))
+            (PRF.dropFirst (PRF.mapNth 0 (PRF.comp1 PRF.succ PRF.first) p))
+            (PRF.comp1 PRF.succ <| PRF.comp1 PRF.succ PRF.second)
+            (PRF.const 0)))))
 
--- #eval evaluate 1000 (PRF.firstLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [3]
+--#eval evaluate 1000 (@PRF.firstLEsat 0 (PRF.comp2 PRF.le (PRF.const 5) PRF.first) (PRF.const 10)) [1]
 
 def PRF.anyLEsat : PRF 1 → PRF 1
 -- anyLEsat(p, n) = { 1 if p(i) for some i <= n; 0 otherwise}
@@ -262,4 +307,53 @@ def PRF.anyLEsat : PRF 1 → PRF 1
           PRF.first)))
 
 --#eval evaluate 1000 (PRF.anyLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [2]
+
+def PRF.limMin : PRF (k + 1) → PRF k → PRF k
+  -- (μ z ≤ g(x₁, ..., xₙ))[h(z, x₁, ..., xₙ) > 0]
+  | h, g => PRF.firstLEsat h g
+
+-- #eval evaluate
+--         1000
+--         (PRF.limMin
+--           (PRF.comp2 PRF.le (PRF.const 3) PRF.first)
+--           (@PRF.comp2 1 PRF.add PRF.first (PRF.const 1)))
+--         [2]
+
+namespace TM
+
+def TM.len : Nat → PRF 1
+  -- lenₖ(w) = z such that k^z > w and ∀n, k^n > w → n > z
+  | k =>
+    PRF.limMin
+      (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
+      PRF.identity
+
+--#eval evaluate 100000 (TM.len 10) [10]
+
+def TM.concat : Nat → PRF 2
+-- w₁.w₂ = w₁*k^len(w₂) + w₂
+  | k =>
+    PRF.comp2
+      PRF.add
+      (PRF.comp2
+        PRF.mul
+        PRF.first
+        (PRF.comp2
+          PRF.exp
+          (PRF.const k)
+          (PRF.comp1 (TM.len k) PRF.second)))
+      PRF.second
+
+--#eval evaluate 100000 (TM.concat 10) [1, 2]
+
+-- def TM.pre : Nat → PRF 2
+--   -- pre(w₁, w) = z s.t. ∃z,∃i, z.w₁.i = w
+--   | k => PRF.limMin (PRF.firstLEsat (PRF.comp2 (TM.concat k) _ _)) PRF.second
+
+end TM
 end PRF
+
+
+open PRF.TM
+def main : IO Unit :=
+  IO.println s!"{PRF.evaluate 100000 (TM.len 10) [10]}"
