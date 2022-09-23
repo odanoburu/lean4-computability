@@ -75,6 +75,16 @@ instance {α : Type u} [ToString α] : ToString (EvalResult α) :=
   | wrongNumberOfArguments fn expected got => s!"Wrong number of arguments for function {fn}: expected {expected} but got {got}"
   | ok r => s!"ok: {r}"⟩
 
+def Nat.forEachUntil : (Nat → α → α) → Nat → α → α
+| f, n, acc =>
+  let rec helper : Nat → Nat → α → α
+    | 0, _, acc => acc
+    | n + 1, m, acc => helper n (m+1) (f m acc)
+  helper n 0 acc
+
+-- #eval Nat.forEachUntil (λ _ a => a + 1) 0 0
+-- #eval Nat.forEachUntil (λ _ a => a + 1) 0 1
+-- #eval Nat.forEachUntil Nat.add 10 1
 
 
 def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
@@ -110,13 +120,15 @@ def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
          | PRF.primrec g h =>
            match ns with
            | [] => wrongNumberOfArguments "primrec" 1 0
-           | 0 :: ns => evaluate gas g ns
-           | (n + 1) :: ns =>
-             match evaluate gas f (n :: ns) with
-             | outOfGas => outOfGas
-             | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
-             | ok fn => evaluate gas h (fn :: n :: ns)
-
+           | n :: ns =>
+             Nat.forEachUntil
+               (λ n acc =>
+                 match acc with
+                 | outOfGas => outOfGas
+                 | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
+                 | ok fn => evaluate gas h (fn :: n :: ns))
+               n
+               (evaluate gas g ns)
 
 def PRF.comp1 : PRF 1 → PRF k → PRF k
   | g, h => PRF.comp g (λ _ => h)
@@ -137,6 +149,10 @@ def PRF.first : PRF (n + 1) := PRF.proj 0
 
 def PRF.second : PRF (n + 2) := PRF.proj 1
 
+def PRF.third : PRF (n + 3) := PRF.proj 2
+
+def PRF.fourth : PRF (n + 4) := PRF.proj 3
+
 def PRF.const {k : Nat} : Nat → PRF k
   | 0 =>
       PRF.comp PRF.zero (λ {isLt := zeroltzero} =>
@@ -149,18 +165,42 @@ def PRF.add : PRF 2 :=
     PRF.identity
     (PRF.comp1 PRF.succ PRF.first)
 
+-- #eval evaluate 1000 PRF.add [3, 2]
+
 def PRF.mul : PRF 2 :=
   PRF.primrec
     (PRF.const 0)
     (PRF.comp2 PRF.add (PRF.proj 0) (PRF.proj 2))
 
+-- #eval evaluate 1000 PRF.mul [3, 0]
+-- #eval evaluate 1000 PRF.mul [3, 4]
+
+def PRF.exp : PRF 2 :=
+  PRF.comp2
+    (PRF.primrec
+      (PRF.const 1)
+      (PRF.comp2 PRF.mul PRF.first (PRF.proj 2)))
+    PRF.second
+    PRF.first
+
+-- #eval evaluate 100000000 PRF.exp [0, 0]
+-- #eval evaluate 100000000 PRF.exp [0, 1]
+-- #eval evaluate 100000000 PRF.exp [10, 0]
+--#eval evaluate 100000000 PRF.exp [10, 2]
+
 def PRF.pred : PRF 1 :=
   PRF.primrec (PRF.const 0) PRF.second
+
+-- #eval evaluate 100000000 PRF.pred [2]
 
 def PRF.signal : PRF 1 :=
   PRF.primrec
     (PRF.const 0)
     (PRF.const 1)
+
+-- #eval evaluate 100 PRF.signal [0]
+-- #eval evaluate 100 PRF.signal [1]
+-- #eval evaluate 100 PRF.signal [20]
 
 def PRF.le : PRF 2 :=
   PRF.comp1 PRF.signal
@@ -168,8 +208,9 @@ def PRF.le : PRF 2 :=
       (PRF.comp1 PRF.succ PRF.first)
       (PRF.comp1 PRF.pred PRF.first))
 
---#eval evaluate 100 PRF.le [10, 10]
---#eval evaluate 100 PRF.le [9, 10]
+-- #eval evaluate 100 PRF.le [9, 10]
+-- #eval evaluate 100 PRF.le [10, 10]
+-- #eval evaluate 100 PRF.le [2, 1]
 
 def PRF.not : PRF 1 :=
   PRF.primrec
@@ -183,25 +224,12 @@ def PRF.if : PRF k → PRF k → PRF k → PRF k
       (PRF.comp2 PRF.mul (PRF.comp1 PRF.signal t) f)
       (PRF.comp2 PRF.mul (PRF.comp1 PRF.not t) g)
 
---#eval evaluate 10 (PRF.if PRF.first PRF.first PRF.not) [2]
-
--- #check 0
--- #eval finRange 10
---#eval evaluate 10 (@PRF.const 3 1) [19, 32]
---#eval evaluate 100 PRF.add [32, 1]
---#eval evaluate 100 PRF.mul [3, 0]
---#eval evaluate 100 PRF.mul [3, 1]
---#eval evaluate 100 PRF.mul [20, 2]
---#eval evaluate 100 PRF.mul [3, 35]
--- #eval evaluate 100 PRF.signal [10]
--- #eval evaluate 100 PRF.signal [0]
--- #eval evaluate 100 PRF.signal [3,3]
-
+-- #eval evaluate 10 (PRF.if PRF.first PRF.first PRF.not) [0]
 
 def PRF.and : PRF 2 :=
   PRF.comp1 PRF.signal (PRF.if PRF.first PRF.second (PRF.const 0))
 
---#eval evaluate 100 PRF.and [2, 0]
+-- #eval evaluate 100 PRF.and [2, 0]
 
 def PRF.firstLEsat : PRF 1 → PRF 1
 -- finds first number less or equal than input argument that
@@ -218,5 +246,20 @@ def PRF.firstLEsat : PRF 1 → PRF 1
             (PRF.comp1 PRF.succ (PRF.comp1 PRF.succ PRF.second))
             PRF.first)))
 
---#eval evaluate 1000 (PRF.firstLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [5]
+-- #eval evaluate 1000 (PRF.firstLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [3]
+
+def PRF.anyLEsat : PRF 1 → PRF 1
+-- anyLEsat(p, n) = { 1 if p(i) for some i <= n; 0 otherwise}
+  | p =>
+    (PRF.primrec
+      (PRF.comp1 PRF.signal (PRF.comp1 p (PRF.const 0)))
+      (PRF.if
+        PRF.first
+        PRF.first
+        (PRF.if
+          (PRF.comp1 p (PRF.comp1 PRF.succ PRF.second))
+          (PRF.const 1)
+          PRF.first)))
+
+--#eval evaluate 1000 (PRF.anyLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [2]
 end PRF
