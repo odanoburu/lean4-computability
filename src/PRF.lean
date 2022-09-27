@@ -24,6 +24,9 @@ inductive PRF : Nat → Type where
   | proj    : {n : Nat} → Fin n → PRF n -- projection
   | comp    : {m k : Nat} → PRF m → (Fin m → PRF k) → PRF k -- composition
   | primrec : {n : Nat} → PRF n → PRF (n + 2) → PRF (n + 1) -- primitive recursion
+  -- non-primitives, but useful for timely evaluation
+  | exp : PRF 2
+  | lt : PRF 2
 
 --. composition:
 -- If g is a function of m-variables and h₁ ... , hₘ are functions of k variables,
@@ -39,6 +42,9 @@ def PRF.ToString : PRF n → String
   | PRF.proj {val := n, isLt := _} => s!"proj_{n}"
   | PRF.comp g _h => s!"{ToString g}∘"
   | PRF.primrec b c => s!"primrec({ToString b}, {ToString c})"
+  --
+  | PRF.exp => "exp"
+  | PRF.lt => "lt"
 
 instance : ToString (PRF n) :=
   ⟨PRF.ToString⟩
@@ -99,6 +105,8 @@ def Nat.forEachUntil : (Nat → α → α) → Nat → α → α
 --     | some n => ok n
 --     | none => wrongNumberOfArguments "proj" i (List.length ns)
 
+-- for debugging: dbgTraceVal
+
 def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
   match gas with
   | zero => outOfGas
@@ -141,6 +149,14 @@ def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
                  | ok fn => evaluate gas h (fn :: n :: ns))
                n
                (evaluate gas g ns)
+         | PRF.exp =>
+           match ns with
+           | [n, m] => ok (Nat.pow n m)
+           | _ => wrongNumberOfArguments "exp" 2 (List.length ns)
+         | PRF.lt =>
+           match ns with
+           | [n, m] => ok (if Nat.ble (n + 1) m then 1 else 0)
+           | _ => wrongNumberOfArguments "lt" 2 (List.length ns)
 
 def PRF.comp1 : PRF 1 → PRF k → PRF k
   | g, h => PRF.comp g (λ _ => h)
@@ -210,7 +226,7 @@ def PRF.mul : PRF 2 :=
 -- #eval evaluate 1000 PRF.mul [3, 0]
 -- #eval evaluate 1000 PRF.mul [3, 4]
 
-def PRF.exp : PRF 2 :=
+def PRF.definedExp : PRF 2 :=
   PRF.comp2
     (PRF.primrec
       (PRF.const 1)
@@ -238,21 +254,24 @@ def PRF.signal : PRF 1 :=
 -- #eval evaluate 100 PRF.signal [20]
 
 def PRF.le : PRF 2 :=
-  PRF.comp1 PRF.signal
-    (PRF.primrec
-      (PRF.comp1 PRF.succ PRF.first)
-      (PRF.comp1 PRF.pred PRF.first))
+  -- definition using lt
+  PRF.comp2 PRF.lt PRF.first (PRF.comp1 succ PRF.second)
+  -- -- pure definition:
+  -- PRF.comp1 PRF.signal
+  --   (PRF.primrec
+  --     (PRF.comp1 PRF.succ PRF.first)
+  --     (PRF.comp1 PRF.pred PRF.first))
 
 -- #eval evaluate 100 PRF.le [9, 10]
 -- #eval evaluate 100 PRF.le [10, 10]
 -- #eval evaluate 100 PRF.le [2, 1]
 
-def PRF.lt : PRF 2 :=
+def PRF.definedLt : PRF 2 :=
   PRF.comp2 PRF.le (PRF.comp1 PRF.succ PRF.first) PRF.second
 
---#eval evaluate 100 PRF.lt [9, 10]
---#eval evaluate 100 PRF.lt [10, 10]
---#eval evaluate 100 PRF.lt [2, 1]
+-- #eval evaluate 100 PRF.lt [0, 0]
+-- #eval evaluate 100 PRF.lt [10, 10]
+-- #eval evaluate 100 PRF.lt [2, 11]
 
 def PRF.not : PRF 1 :=
   PRF.primrec
@@ -397,7 +416,7 @@ def TM.len : Nat → PRF 1
       (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
       PRF.identity
 
---#eval evaluate 100000 (TM.len 10) [10]
+--#eval evaluate 100000 (TM.len 10) [220]
 
 def TM.concat : Nat → PRF 2
 -- w₁.w₂ = w₁*k^len(w₂) + w₂
@@ -413,7 +432,7 @@ def TM.concat : Nat → PRF 2
           (PRF.comp1 (TM.len k) PRF.second)))
       PRF.second
 
---#eval evaluate 100000 (TM.concat 10) [1, 1]
+--#eval evaluate 100000 (TM.concat 10) [12, 1]
 
 def PRF.eq : PRF 2 :=
   PRF.comp2
@@ -477,4 +496,4 @@ end PRF
 
 open PRF.TM
 def main : IO Unit :=
-  IO.println s!"{PRF.evaluate 100000 (TM.pre 10) [2, 12]}"
+  IO.println s!"{PRF.evaluate 100000 (TM.len 10) [10]}"
