@@ -86,6 +86,18 @@ def Nat.forEachUntil : (Nat → α → α) → Nat → α → α
 -- #eval Nat.forEachUntil (λ _ a => a + 1) 0 1
 -- #eval Nat.forEachUntil Nat.add 10 1
 
+-- -- experiment: evaluate one step
+-- def eval1 (f : PRF a) (ns : List Nat) : EvalResult Nat :=
+--   match f with
+--   | PRF.zero => ok 0
+--   | PRF.succ =>
+--     match ns with
+--     | List.cons n [] => ok (n + 1)
+--     | _ => wrongNumberOfArguments "succ" 1 (List.length ns)
+--   | PRF.proj i =>
+--     match List.lookupIdx ns i with
+--     | some n => ok n
+--     | none => wrongNumberOfArguments "proj" i (List.length ns)
 
 def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
   match gas with
@@ -142,6 +154,29 @@ def PRF.comp2 : PRF 2 → PRF k → PRF k → PRF k
         | {val := 0, isLt := _} => h
         | {val := 1, isLt := _} => i
         | {val := n + 2, isLt} => by contradiction)
+
+def PRF.comp3 : PRF 3 → PRF k → PRF k → PRF k → PRF k
+  | g, h, i, j =>
+    PRF.comp
+      g
+      (λ n =>
+        match n with
+        | {val := 0, isLt := _} => h
+        | {val := 1, isLt := _} => i
+        | {val := 2, isLt := _} => j
+        | {val := n + 3, isLt} => by contradiction)
+
+def PRF.comp4 : PRF 4 → PRF k → PRF k → PRF k → PRF k → PRF k
+  | g, h, i, j, l =>
+    PRF.comp
+      g
+      (λ n =>
+        match n with
+        | {val := 0, isLt := _} => h
+        | {val := 1, isLt := _} => i
+        | {val := 2, isLt := _} => j
+        | {val := 3, isLt := _} => l
+        | {val := n + 4, isLt} => by contradiction)
 
 def PRF.identity : PRF 1 := PRF.proj 0
 
@@ -233,8 +268,11 @@ def PRF.if : PRF k → PRF k → PRF k → PRF k
 
 -- #eval evaluate 10 (PRF.if PRF.first PRF.first PRF.not) [0]
 
+def PRF.or : PRF 2 :=
+  PRF.comp1 PRF.signal (PRF.comp2 PRF.add PRF.first PRF.second)
+
 def PRF.and : PRF 2 :=
-  PRF.comp1 PRF.signal (PRF.if PRF.first PRF.second (PRF.const 0))
+  PRF.comp2 PRF.mul (PRF.comp1 PRF.signal PRF.first) (PRF.comp1 PRF.signal PRF.second)
 
 -- #eval evaluate 100 PRF.and [2, 0]
 
@@ -256,6 +294,21 @@ def PRF.dropFirst : PRF k → PRF (k + 1)
         PRF.proj { val := i + 1
                  , isLt := Nat.succ_le_succ iLt
                  })
+
+def PRF.dropNth : Nat → PRF k → PRF (k + 1)
+  | n, f =>
+    PRF.comp
+      f
+      (λ {val := i, isLt := iLt} =>
+        if i < n
+        then
+        PRF.proj { val := i, isLt := Nat.le.step iLt }
+        else
+        PRF.proj { val := i + 1
+                 , isLt := Nat.succ_le_succ iLt
+                 })
+
+--#eval evaluate 100 (PRF.dropNth 0 PRF.le) [4, 5 , 3]
 
 def PRF.mapNth : Nat → PRF k → PRF k → PRF k
   | i, g, f =>
@@ -308,6 +361,22 @@ def PRF.anyLEsat : PRF 1 → PRF 1
 
 --#eval evaluate 1000 (PRF.anyLEsat (PRF.comp2 PRF.le (PRF.const 3) PRF.first)) [2]
 
+def PRF.disjunction : PRF (k + 1) → PRF (k + 1)
+-- disjunction(p, n, x₁, ..., xₙ) = { 1 if p(i, n, x₁, ..., xₙ) for some i <= n; 0 otherwise}
+  | p =>
+    PRF.comp2
+      PRF.or
+      (PRF.primrec
+        (PRF.const 0)
+        (PRF.if
+          PRF.first
+          PRF.first
+          (PRF.comp1 PRF.signal
+            (PRF.dropNth 0 p))))
+      p
+
+--#eval evaluate 1000 (@PRF.disjunction 0 (PRF.comp2 PRF.le (PRF.const 13) PRF.first)) [0]
+
 def PRF.limMin : PRF (k + 1) → PRF k → PRF k
   -- (μ z ≤ g(x₁, ..., xₙ))[h(z, x₁, ..., xₙ) > 0]
   | h, g => PRF.firstLEsat h g
@@ -344,11 +413,63 @@ def TM.concat : Nat → PRF 2
           (PRF.comp1 (TM.len k) PRF.second)))
       PRF.second
 
---#eval evaluate 100000 (TM.concat 10) [1, 2]
+--#eval evaluate 100000 (TM.concat 10) [1, 1]
 
--- def TM.pre : Nat → PRF 2
---   -- pre(w₁, w) = z s.t. ∃z,∃i, z.w₁.i = w
---   | k => PRF.limMin (PRF.firstLEsat (PRF.comp2 (TM.concat k) _ _)) PRF.second
+def PRF.eq : PRF 2 :=
+  PRF.comp2
+    PRF.and
+    PRF.le
+    (PRF.comp2 PRF.le PRF.second PRF.first)
+
+--#eval evaluate 100000 PRF.eq [0, 1]
+--#eval evaluate 100000 PRF.eq [11, 11]
+--#eval evaluate 100000 PRF.eq [2, 1]
+
+def TM.pre : Nat → PRF 2
+  -- pre(w₁, w) = z s.t. ∃z,∃i, z.w₁.i = w
+  | k =>
+    let concat := TM.concat k
+    PRF.limMin
+      (PRF.comp4
+        (PRF.disjunction
+          (PRF.comp2
+            PRF.eq
+            PRF.fourth /- w -/
+            (PRF.comp2 concat PRF.second (PRF.comp2 concat PRF.third PRF.first))))
+        PRF.third /- w -/
+        PRF.first /- z -/
+        PRF.second /- w₁ -/
+        PRF.third /- w again -/)
+      PRF.second
+
+--#eval evaluate 100000 (TM.pre 10) [2, 12]
+
+def TM.post : Nat → PRF 2
+  -- post(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
+  | k =>
+    let concat := TM.concat k
+    PRF.if
+      PRF.le
+      (PRF.limMin
+        (PRF.comp2
+          PRF.eq
+            (PRF.comp2 concat (PRF.comp2 concat (PRF.comp2 (TM.pre k) PRF.second PRF.third) PRF.second) PRF.first)
+            PRF.third)
+        PRF.second)
+      (PRF.const 0)
+
+def TM.subst : Nat → PRF 3
+  | k =>
+    let concat := TM.concat k
+    PRF.if
+      (PRF.comp2 PRF.le PRF.first PRF.third)
+      (PRF.comp2
+        concat
+        (PRF.comp2 (TM.pre k) PRF.first PRF.second)
+        (PRF.comp2 concat PRF.second (PRF.comp2 (TM.post k) PRF.first PRF.third)))
+      PRF.third
+
+--#eval evaluate 100000 (TM.subst 10) [2, 1, 121]
 
 end TM
 end PRF
@@ -356,4 +477,4 @@ end PRF
 
 open PRF.TM
 def main : IO Unit :=
-  IO.println s!"{PRF.evaluate 100000 (TM.len 10) [10]}"
+  IO.println s!"{PRF.evaluate 100000 (TM.pre 10) [2, 12]}"
