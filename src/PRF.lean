@@ -276,6 +276,16 @@ def PRF.and : PRF 2 :=
 
 -- #eval evaluate 100 PRF.and [2, 0]
 
+def PRF.eq : PRF 2 :=
+  PRF.comp2
+    PRF.and
+    PRF.le
+    (PRF.comp2 PRF.le PRF.second PRF.first)
+
+--#eval evaluate 100000 PRF.eq [0, 1]
+--#eval evaluate 100000 PRF.eq [11, 11]
+--#eval evaluate 100000 PRF.eq [2, 1]
+
 def PRF.fixFirst : PRF k → PRF (k + 1) → PRF k
   | z, f =>
     PRF.comp
@@ -390,86 +400,194 @@ def PRF.limMin : PRF (k + 1) → PRF k → PRF k
 
 namespace TM
 
-def TM.len : Nat → PRF 1
+def k : Nat
+  -- number of symbols in the alphabet
+  := 10
+
+def symbolMark : Nat
+  -- mark before a symbol starts
+  := 2
+
+def stateMark : Nat
+  -- mark before a state starts
+  := 3
+
+def movementMark : Nat
+  -- mark before a movement
+  := 4
+
+def leftMark : Nat
+  -- indicates left movement
+  := 5
+
+def rightMark : Nat
+  -- indicates right movement
+  := 6
+
+def stopMark : Nat
+  -- indicates stop (non-)movement
+  := 7
+
+def stepMark : Nat
+  -- separates a TM step from another
+  := 8
+
+def emptyMark : Nat
+  -- denotes the empty cell
+  := 9
+
+def TM.len : PRF 1 :=
   -- lenₖ(w) = z such that k^z > w and ∀n, k^n > w → n > z
-  | k =>
-    PRF.limMin
-      (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
-      PRF.identity
+  PRF.limMin
+    (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
+    PRF.identity
 
 --#eval evaluate 100000 (TM.len 10) [10]
 
-def TM.concat : Nat → PRF 2
--- w₁.w₂ = w₁*k^len(w₂) + w₂
-  | k =>
-    PRF.comp2
-      PRF.add
+def TM.concat : PRF 2 :=
+  -- w₁.w₂ = w₁*k^len(w₂) + w₂
+  PRF.comp2
+    PRF.add
+    (PRF.comp2
+      PRF.mul
+      PRF.first
       (PRF.comp2
-        PRF.mul
-        PRF.first
-        (PRF.comp2
-          PRF.exp
-          (PRF.const k)
-          (PRF.comp1 (TM.len k) PRF.second)))
-      PRF.second
+        PRF.exp
+        (PRF.const k)
+        (PRF.comp1 len PRF.second)))
+    PRF.second
 
 --#eval evaluate 100000 (TM.concat 10) [1, 1]
 
-def PRF.eq : PRF 2 :=
-  PRF.comp2
-    PRF.and
-    PRF.le
-    (PRF.comp2 PRF.le PRF.second PRF.first)
-
---#eval evaluate 100000 PRF.eq [0, 1]
---#eval evaluate 100000 PRF.eq [11, 11]
---#eval evaluate 100000 PRF.eq [2, 1]
-
-def TM.pre : Nat → PRF 2
+def TM.pre : PRF 2 :=
   -- pre(w₁, w) = z s.t. ∃z,∃i, z.w₁.i = w
-  | k =>
-    let concat := TM.concat k
-    PRF.limMin
-      (PRF.comp4
-        (PRF.disjunction
-          (PRF.comp2
-            PRF.eq
-            PRF.fourth /- w -/
-            (PRF.comp2 concat PRF.second (PRF.comp2 concat PRF.third PRF.first))))
-        PRF.third /- w -/
-        PRF.first /- z -/
-        PRF.second /- w₁ -/
-        PRF.third /- w again -/)
-      PRF.second
+  PRF.limMin
+    (PRF.comp4
+      (PRF.disjunction
+        (PRF.comp2
+          PRF.eq
+          PRF.fourth /- w -/
+          (PRF.comp2 concat PRF.second (PRF.comp2 concat PRF.third PRF.first))))
+      PRF.third /- w -/
+      PRF.first /- z -/
+      PRF.second /- w₁ -/
+      PRF.third /- w again -/)
+    PRF.second
 
 --#eval evaluate 100000 (TM.pre 10) [2, 12]
 
-def TM.post : Nat → PRF 2
+def TM.post : PRF 2 :=
   -- post(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
-  | k =>
-    let concat := TM.concat k
-    PRF.if
-      PRF.le
-      (PRF.limMin
-        (PRF.comp2
-          PRF.eq
-            (PRF.comp2 concat (PRF.comp2 concat (PRF.comp2 (TM.pre k) PRF.second PRF.third) PRF.second) PRF.first)
-            PRF.third)
-        PRF.second)
-      (PRF.const 0)
-
-def TM.subst : Nat → PRF 3
-  | k =>
-    let concat := TM.concat k
-    PRF.if
-      (PRF.comp2 PRF.le PRF.first PRF.third)
+  PRF.if
+    PRF.le
+    (PRF.limMin
       (PRF.comp2
-        concat
-        (PRF.comp2 (TM.pre k) PRF.first PRF.second)
-        (PRF.comp2 concat PRF.second (PRF.comp2 (TM.post k) PRF.first PRF.third)))
-      PRF.third
+        PRF.eq
+          (PRF.comp2 concat (PRF.comp2 concat (PRF.comp2 pre PRF.second PRF.third) PRF.second) PRF.first)
+          PRF.third)
+      PRF.second)
+    (PRF.const 0)
+
+def TM.subst : PRF 3 :=
+  -- subst(w₁, w₂, w) = if substring(w₁, w) then w[w₁ ← w₂] else w
+  PRF.if
+    (PRF.comp2 PRF.le PRF.first PRF.third)
+    (PRF.comp2
+      concat
+      (PRF.comp2 pre PRF.first PRF.second)
+      (PRF.comp2 concat PRF.second (PRF.comp2 post PRF.first PRF.third)))
+    PRF.third
 
 --#eval evaluate 100000 (TM.subst 10) [2, 1, 121]
+
+def TM.state : PRF 1 :=
+  -- get current TM state
+  PRF.comp2
+    pre
+    (PRF.const symbolMark)
+    (PRF.comp2
+      post
+      (PRF.const stateMark)
+      PRF.first)
+
+def TM.currentSymbol : PRF 1 :=
+  PRF.comp2
+    pre
+    (PRF.const symbolMark)
+    (PRF.comp2
+      post
+      (PRF.const symbolMark)
+      (PRF.comp2
+        post
+        (PRF.const stateMark)
+        PRF.first))
+
+
+def TM.leftSymbol : PRF 1 :=
+  PRF.comp2
+    post
+    (PRF.const symbolMark)
+    (PRF.comp2
+      pre
+      (PRF.const stateMark)
+      PRF.first)
+
+def TM.nextSymbol : PRF 3 :=
+  PRF.comp2
+    concat
+    (PRF.const symbolMark)
+    (PRF.comp2
+      pre
+      (PRF.const movementMark)
+      (PRF.comp2
+        post
+        (PRF.const symbolMark)
+        (PRF.comp2
+          post
+          (PRF.comp2
+            concat
+            PRF.second
+            PRF.third)
+          PRF.first)))
+
+def TM.nextState : PRF 3 :=
+  PRF.comp2
+    concat
+    (PRF.const stateMark)
+    (PRF.comp2
+      pre
+      (PRF.const symbolMark)
+      (PRF.comp2
+        post
+        (PRF.comp2
+          concat
+          PRF.second
+          PRF.third)
+        PRF.first))
+
+def TM.movement : PRF 3 :=
+  PRF.comp2
+    post
+    (PRF.const movementMark)
+    (PRF.comp2
+      pre
+      (PRF.const stepMark)
+      (PRF.comp2
+        post
+        (PRF.comp2
+          concat
+          PRF.second
+          PRF.third)
+        PRF.first))
+
+def TM.step : PRF 2 :=
+  _
+
+def TM.steps : PRF 3 :=
+  PRF.primrec
+    PRF.second
+    (PRF.comp2 TM.step PRF.third PRF.first)
+
 
 end TM
 end PRF
@@ -477,4 +595,4 @@ end PRF
 
 open PRF.TM
 def main : IO Unit :=
-  IO.println s!"{PRF.evaluate 100000 (TM.pre 10) [2, 12]}"
+  IO.println s!"{PRF.evaluate 100000 TM.pre [2, 12]}"
