@@ -1,23 +1,42 @@
-namespace PRF
-
 open Nat
 
+structure Vector (n : Nat) (α : Type u) where
+  val  : List α
+  hasLen : List.length val = n
 
-inductive Vector (α : Type u) : Nat → Type u where
-  | nil  : Vector α 0
-  | cons : α → {n : Nat} → Vector α n → Vector α (n + 1)
+@[specialize] def Vector.get {α : Type u} : (as : Vector n α) → Fin n → α
+  | xs, {val := i, isLt} =>
+    -- List.length xs.val = n, n <= n → n <= List.length xs.val
+    List.get xs.val {val := i, isLt := Nat.le_trans isLt (Eq.subst (Eq.symm xs.hasLen) Nat.le.refl)}
 
-def Vector.get {α : Type u} : (as : Vector α n) → Fin n → α
-  | cons a _,  ⟨0, _⟩ => a
-  | cons _ as, ⟨Nat.succ i, h⟩ => get as ⟨i, Nat.le_of_succ_le_succ h⟩
+def Vector.fromList {α : Type u} : (as : List α) → Vector (List.length as) α
+  | xs => {val := xs, hasLen := rfl}
 
-def Vector.fromList {α : Type u} : (as : List α) → Vector α (List.length as)
-  | [] => Vector.nil
-  | x :: xs => Vector.cons x (Vector.fromList xs)
+-- @[specialize] def Vector.cons {α : Type u} : α → Vector n α → Vector (n + 1) α
+--   | x, {val := xs, hasLen} =>
+--     let consLen : List.length (x :: xs) = List.length xs + 1 := List.length_cons x xs
+--     {val := x :: xs, hasLen := @Eq.subst _ (λ sm => List.length (x :: xs) = sm + 1) _ _ hasLen consLen}
 
-def enumeration {α : Type u} : Vector α n → (Fin n → α)
+def Vector.enumeration {α : Type u} : Vector n α → (Fin n → α)
   | as => λ i => Vector.get as i
 
+-- @[specialize] def List.build {α : Type u} (n : Nat) (f : Fin (n + 1) → α) : List α :=
+--   let rec helper : Fin (n + 1)  → List α → List α
+--     | {val := 0, isLt := _}, acc => (f {val := 0, isLt := Nat.zero_lt_succ n} :: acc)
+--     | {val := i + 1, isLt := succ_i_lt_n}, acc =>
+--       let i_lt_succ_n := Nat.lt_trans Nat.le.refl succ_i_lt_n
+--       helper {val := i, isLt := i_lt_succ_n} (f {val := i + 1, isLt := succ_i_lt_n} :: acc)
+--   helper {val := n, isLt := Nat.le.refl} []
+
+-- @[simp] theorem List.length_build {α} (n : Nat) {f : Fin (n + 1) → α} : Eq (List.build n f).length (n + 1) := by
+--   induction n with
+--   | zero => rfl
+--   | succ n => sorry
+
+-- @[specialize] def Vector.build {α : Type u} (n : Nat) (f : Fin (n + 1) → α) : Vector (n + 1) α :=
+--   {val := (List.build n f), hasLen := List.length_build n}
+
+namespace PRF
 inductive PRF : Nat → Type where
   | zero    : PRF 0
   | succ    : PRF 1
@@ -43,104 +62,31 @@ def PRF.ToString : PRF n → String
 instance : ToString (PRF n) :=
   ⟨PRF.ToString⟩
 
-def PRF.arity (_ : PRF a) : Nat := a
+def evaluate (f : PRF a) (arg : Fin a → Nat) : Nat :=
+  match f with
+  | PRF.zero => 0
+  | PRF.succ => arg 0 + 1
+  | PRF.proj i => arg i
+  | PRF.comp g hs => evaluate g (λ i => evaluate (hs i) arg)
+  | PRF.primrec g h =>
+    let evalG := evaluate g
+    let evalH := evaluate h
+    let rec primrec : Nat → Nat
+    | 0 =>
+      evalG
+        (λ {val := i, isLt := i_lt_n} =>
+          arg {val := i + 1, isLt := Nat.succ_le_succ i_lt_n})
+    | n + 1 =>
+      evalH
+        (λ fini =>
+          match fini with
+          | {val := 0, isLt := _} => primrec n
+          | {val := 1, isLt := _} => n
+          | {val := i + 2, isLt} => arg {val := i + 1, isLt := Nat.pred_le_pred isLt})
+    primrec (arg 0)
 
-def finRangeAux : (m : Nat) → m < n → List (Fin n) → List (Fin n)
-  | 0, zeroLTn, ns => {val := 0, isLt := zeroLTn} :: ns
-  | succ m, succmLTn, ns =>
-       let mLTn := Nat.lt_trans Nat.le.refl succmLTn
-       finRangeAux m mLTn ({val := succ m, isLt := succmLTn} :: ns)
-
-def finRange : (n : Nat) -> List (Fin n)
-  | zero => []
-  | succ n => finRangeAux n Nat.le.refl []
-
-def List.lookupIdx : List α → Nat → Option α
-  | [],    _   => none
-  | a::_, 0   => some a
-  | _::as, n+1 => lookupIdx as n
-
-inductive EvalResult (α : Type u) where
-  | outOfGas : EvalResult α
-  | wrongNumberOfArguments (fn : String) (expected : Nat) (got : Nat) : EvalResult α
-  | ok (val : α) : EvalResult α
-  deriving Repr
-
-export EvalResult (outOfGas wrongNumberOfArguments ok)
-
-instance {α : Type u} [ToString α] : ToString (EvalResult α) :=
-  ⟨fun r =>
-  match r with
-  | outOfGas => "Out of gas."
-  | wrongNumberOfArguments fn expected got => s!"Wrong number of arguments for function {fn}: expected {expected} but got {got}"
-  | ok r => s!"ok: {r}"⟩
-
-def Nat.forEachUntil : (Nat → α → α) → Nat → α → α
-| f, n, acc =>
-  let rec helper : Nat → Nat → α → α
-    | 0, _, acc => acc
-    | n + 1, m, acc => helper n (m+1) (f m acc)
-  helper n 0 acc
-
--- #eval Nat.forEachUntil (λ _ a => a + 1) 0 0
--- #eval Nat.forEachUntil (λ _ a => a + 1) 0 1
--- #eval Nat.forEachUntil Nat.add 10 1
-
--- -- experiment: evaluate one step
--- def eval1 (f : PRF a) (ns : List Nat) : EvalResult Nat :=
---   match f with
---   | PRF.zero => ok 0
---   | PRF.succ =>
---     match ns with
---     | List.cons n [] => ok (n + 1)
---     | _ => wrongNumberOfArguments "succ" 1 (List.length ns)
---   | PRF.proj i =>
---     match List.lookupIdx ns i with
---     | some n => ok n
---     | none => wrongNumberOfArguments "proj" i (List.length ns)
-
-def evaluate (gas : Nat) (f : PRF a) (ns : List Nat) : EvalResult Nat :=
-  match gas with
-  | zero => outOfGas
-  | succ gas =>
-         match f with
-         | PRF.zero => ok 0
-         | PRF.succ =>
-                    match ns with
-                    | List.cons n [] => ok (n + 1)
-                    | _ => wrongNumberOfArguments "succ" 1 (List.length ns)
-         | PRF.proj i =>
-           match List.lookupIdx ns i with
-           | some n => ok n
-           | none => wrongNumberOfArguments "proj" i (List.length ns)
-         | PRF.comp g hs =>
-                    let mAs := List.foldr
-                                (λ i acc =>
-                                  match acc with
-                                  | ok as =>
-                                    match evaluate gas (hs i) ns with
-                                    | ok a => ok <| a :: as
-                                    | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
-                                    | outOfGas => outOfGas
-                                  | err => err)
-                                (ok [])
-                                (finRange <| PRF.arity g)
-                    match mAs with
-                    | ok as => evaluate gas g as
-                    | outOfGas => outOfGas
-                    | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
-         | PRF.primrec g h =>
-           match ns with
-           | [] => wrongNumberOfArguments "primrec" 1 0
-           | n :: ns =>
-             Nat.forEachUntil
-               (λ n acc =>
-                 match acc with
-                 | outOfGas => outOfGas
-                 | wrongNumberOfArguments fn expected got => wrongNumberOfArguments fn expected got
-                 | ok fn => evaluate gas h (fn :: n :: ns))
-               n
-               (evaluate gas g ns)
+def eval (f : PRF n) (args : Vector n Nat) : Nat :=
+  evaluate f (Vector.enumeration args)
 
 def PRF.comp1 : PRF 1 → PRF k → PRF k
   | g, h => PRF.comp g (λ _ => h)
@@ -442,7 +388,7 @@ def TM.len : PRF 1 :=
     (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
     PRF.identity
 
---#eval evaluate 100000 (TM.len 10) [10]
+#eval eval TM.len (Vector.fromList [10])
 
 def TM.concat : PRF 2 :=
   -- w₁.w₂ = w₁*k^len(w₂) + w₂
@@ -474,7 +420,7 @@ def TM.pre : PRF 2 :=
       PRF.third /- w again -/)
     PRF.second
 
---#eval evaluate 100000 (TM.pre 10) [2, 12]
+--#eval eval TM.pre (Vector.fromList [2, 12])
 
 def TM.post : PRF 2 :=
   -- post(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
@@ -487,6 +433,11 @@ def TM.post : PRF 2 :=
           PRF.third)
       PRF.second)
     (PRF.const 0)
+
+-- theorem pre_post_concat_eq : ok m =
+--                              evaluate g (PRF.comp2 TM.concat TM.pre (PRF.comp2 TM.concat PRF.first TM.post))
+--                                       [n, m] :=
+--   _
 
 def TM.subst : PRF 3 :=
   -- subst(w₁, w₂, w) = if substring(w₁, w) then w[w₁ ← w₂] else w
@@ -595,4 +546,4 @@ end PRF
 
 open PRF.TM
 def main : IO Unit :=
-  IO.println s!"{PRF.evaluate 100000 TM.pre [2, 12]}"
+  IO.println s!"{PRF.eval TM.pre (Vector.fromList [2, 12])}"
