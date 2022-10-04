@@ -346,6 +346,22 @@ def PRF.limMin : PRF (k + 1) → PRF k → PRF k
 
 namespace TM
 
+inductive Move where
+  | left : Move
+  | right : Move
+  | stop : Move
+
+structure Transition where
+  sttState : Nat
+  sttSymbol : Nat
+  endState : Nat
+  endSymbol : Nat
+  move : Move
+
+structure TuringMachine where
+  rules  : List Transition
+  finalState : Nat
+
 def k : Nat
   -- number of symbols in the alphabet
   := 10
@@ -382,13 +398,111 @@ def emptyMark : Nat
   -- denotes the empty cell
   := 9
 
+def TM.encode : TuringMachine → Nat
+  -- encoding as {finalState}{transitions}
+  --- state is Q{bitstring}, symbol is S{bitstring}
+  -- transition is {begin state}{begin symbol}{end state}{end
+  --- symbol}{movement separator}{movement}{rule separator}
+  -- current state goes in the tape instead
+  | tm =>
+    String.toNat! <|
+      String.join
+        [ encodeState tm.finalState
+        , String.intercalate
+            (toString stepMark)
+            (List.map encodeStep tm.rules)
+        ]
+  where
+    encodeState : Nat → String
+    | st => toString stateMark ++ toString st
+    encodeSymbol : Nat → String
+    | sy => toString symbolMark ++ toString sy
+    encodeMove : Move → String
+    | m => toString
+        <| match m with
+           | Move.left => leftMark
+           | Move.right => rightMark
+           | Move.stop => stopMark
+    encodeStep : Transition → String
+    | tr =>
+      String.join
+        [ encodeState tr.sttState
+        , encodeSymbol tr.sttSymbol
+        , encodeState tr.endState
+        , encodeSymbol tr.endSymbol
+        , toString movementMark
+        , encodeMove tr.move
+        ]
+
+def TM.unarySucc : TuringMachine :=
+  { rules :=
+    [ { sttState := 0
+      , sttSymbol := 1
+      , endState := 0
+      , endSymbol := 1
+      , move := Move.right
+      }
+    , { sttState := 0
+      , sttSymbol := emptyMark
+      , endState := 1
+      , endSymbol := 1
+      , move := Move.stop
+      }
+    ]
+  , finalState := 1
+  }
+
+--#eval TM.encode TM.unarySucc
+
+def TM.binarySucc : TuringMachine :=
+  { rules :=
+    [ { sttState := 0
+      , sttSymbol := 1
+      , endState := 0
+      , endSymbol := 1
+      , move := Move.right
+      }
+    , { sttState := 0
+      , sttSymbol := emptyMark
+      , endState := 1
+      , endSymbol := emptyMark
+      , move := Move.left
+      }
+    , { sttState := 1
+      , sttSymbol := 1
+      , endState := 1
+      , endSymbol := 1
+      , move := Move.left
+      }
+    , { sttState := 0
+      , sttSymbol := 0
+      , endState := 0
+      , endSymbol := 0
+      , move := Move.right
+      }
+    , { sttState := 1
+      , sttSymbol := 0
+      , endState := 10
+      , endSymbol := 1
+      , move := Move.stop
+      }
+    , { sttState := 1
+      , sttSymbol := emptyMark
+      , endState := 10
+      , endSymbol := 1
+      , move := Move.stop
+      }
+    ]
+  , finalState := 10
+  }
+
 def TM.len : PRF 1 :=
   -- lenₖ(w) = z such that k^z > w and ∀n, k^n > w → n > z
   PRF.limMin
     (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
     PRF.identity
 
-#eval eval TM.len (Vector.fromList [10])
+--#eval eval TM.len (Vector.fromList [10])
 
 def TM.concat : PRF 2 :=
   -- w₁.w₂ = w₁*k^len(w₂) + w₂
@@ -434,15 +548,36 @@ def TM.post : PRF 2 :=
       PRF.second)
     (PRF.const 0)
 
--- theorem pre_post_concat_eq : ok m =
---                              evaluate g (PRF.comp2 TM.concat TM.pre (PRF.comp2 TM.concat PRF.first TM.post))
+-- theorem pre_post_concat_eq : m =
+--                              eval (PRF.comp2 TM.concat TM.pre (PRF.comp2 TM.concat PRF.first TM.post))
 --                                       [n, m] :=
 --   _
+
+def TM.substring : PRF 2 :=
+  PRF.comp2
+    (PRF.disjunction
+      (PRF.comp2
+        PRF.eq
+        PRF.second
+        (PRF.comp2
+          TM.concat
+          (PRF.comp2 TM.pre PRF.first PRF.second)
+          (PRF.comp2
+            TM.concat
+            PRF.first
+            (PRF.comp2
+              TM.post
+              PRF.first
+              PRF.second)))))
+    PRF.second
+    PRF.first
+
+--#eval eval TM.substring (Vector.fromList [1, 12])
 
 def TM.subst : PRF 3 :=
   -- subst(w₁, w₂, w) = if substring(w₁, w) then w[w₁ ← w₂] else w
   PRF.if
-    (PRF.comp2 PRF.le PRF.first PRF.third)
+    (PRF.comp2 TM.substring PRF.first PRF.third)
     (PRF.comp2
       concat
       (PRF.comp2 pre PRF.first PRF.second)
@@ -454,34 +589,43 @@ def TM.subst : PRF 3 :=
 def TM.state : PRF 1 :=
   -- get current TM state
   PRF.comp2
-    pre
-    (PRF.const symbolMark)
+    TM.concat
+    (PRF.const stateMark)
     (PRF.comp2
-      post
-      (PRF.const stateMark)
-      PRF.first)
-
-def TM.currentSymbol : PRF 1 :=
-  PRF.comp2
-    pre
-    (PRF.const symbolMark)
-    (PRF.comp2
-      post
+      pre
       (PRF.const symbolMark)
       (PRF.comp2
         post
         (PRF.const stateMark)
         PRF.first))
 
-
-def TM.leftSymbol : PRF 1 :=
+def TM.currentSymbol : PRF 1 :=
   PRF.comp2
-    post
+    TM.concat
     (PRF.const symbolMark)
     (PRF.comp2
       pre
-      (PRF.const stateMark)
-      PRF.first)
+      (PRF.const symbolMark)
+      (PRF.comp2
+        post
+        (PRF.const symbolMark)
+        (PRF.comp2
+          post
+          (PRF.const stateMark)
+          PRF.first)))
+
+
+def TM.leftSymbol : PRF 1 :=
+  PRF.comp2
+    TM.concat
+    (PRF.const symbolMark)
+    (PRF.comp2
+      post
+      (PRF.const symbolMark)
+      (PRF.comp2
+        pre
+        (PRF.const stateMark)
+        PRF.first))
 
 def TM.nextSymbol : PRF 3 :=
   PRF.comp2
@@ -532,7 +676,41 @@ def TM.movement : PRF 3 :=
         PRF.first))
 
 def TM.step : PRF 2 :=
-  _
+  let machine := PRF.first
+  let tape := PRF.second
+  let currState := PRF.comp1 TM.state PRF.second
+  let currSymbol := PRF.comp1 TM.currentSymbol PRF.second
+  let currentMove :=
+    PRF.comp3
+      TM.movement
+      PRF.first
+      currState
+      currSymbol
+  let equals := λ a1 a2 => PRF.comp2 PRF.eq a1 a2
+  let concat := λ a1 a2 => PRF.comp2 TM.concat a1 a2
+  let subst := λ a1 a2 a3 => PRF.comp3 TM.subst a1 a2 a3
+  let nextState := PRF.comp3 TM.nextState machine currState currSymbol
+  let nextSymbol := PRF.comp3 TM.nextSymbol machine currState currSymbol
+  let leftSymbol := PRF.comp1 TM.leftSymbol tape
+  PRF.if
+    (equals currentMove (PRF.const rightMark))
+    -- next move is to the right
+    (subst
+      (concat currState currSymbol)
+      (concat nextSymbol nextState)
+      tape)
+    (PRF.if
+      (equals currentMove (PRF.const leftMark))
+      -- next move is to the left (to the left, to the left)
+      (subst
+        (concat leftSymbol (concat currState currSymbol))
+        (concat nextState (concat leftSymbol nextSymbol))
+        tape)
+      -- we stop here
+      (subst
+        (concat currState currSymbol)
+        (concat nextState nextSymbol)
+        tape))
 
 def TM.steps : PRF 3 :=
   PRF.primrec
