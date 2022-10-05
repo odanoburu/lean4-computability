@@ -493,10 +493,46 @@ def TM.pre : PRF 2 :=
 
 --#eval eval TM.pre (Vector.fromList [2, 12])
 
+def TM.preFromRight : PRF 2 :=
+  -- preᵣ(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
+  PRF.limMin
+    (PRF.comp4
+      (PRF.disjunction
+        (PRF.comp2
+          PRF.eq
+          PRF.fourth /- w -/
+          (PRF.comp2 concat PRF.first (PRF.comp2 concat PRF.third PRF.second))))
+      PRF.third /- w -/
+      PRF.first /- z -/
+      PRF.second /- w₁ -/
+      PRF.third /- w again -/)
+    PRF.second
+
+def TM.isPrefix : PRF 2 :=
+  PRF.limMin
+    (PRF.comp2
+      PRF.eq
+        PRF.third
+        (PRF.comp2
+          TM.concat
+          PRF.second
+          PRF.first))
+    PRF.second
+
+--#eval eval TM.isPrefix (Vector.fromList [1, 11])
+
+def TM.substring : PRF 2 :=
+  PRF.if
+    TM.pre
+    TM.isPrefix
+    (PRF.const 1)
+
+--#eval eval TM.substring (Vector.fromList [1, 12])
+
 def TM.post : PRF 2 :=
   -- post(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
   PRF.if
-    PRF.le
+    TM.substring
     (PRF.limMin
       (PRF.comp2
         PRF.eq
@@ -509,25 +545,6 @@ def TM.post : PRF 2 :=
 --                              eval (PRF.comp2 TM.concat TM.pre (PRF.comp2 TM.concat PRF.first TM.post))
 --                                       [n, m] :=
 --   _
-
-def TM.substring : PRF 2 :=
-  PRF.comp2
-    (PRF.disjunction
-      (PRF.comp2
-        PRF.eq
-        PRF.second
-        (PRF.comp2
-          TM.concat
-          (PRF.comp2 TM.pre PRF.first PRF.second)
-          (PRF.comp2
-            TM.concat
-            PRF.first
-            (PRF.comp2
-              TM.post
-              PRF.first
-              PRF.second)))))
-    PRF.second
-    PRF.first
 
 --#eval eval TM.pre (Vector.fromList [2, 11])
 
@@ -577,7 +594,7 @@ def TM.leftSymbol : PRF 1 :=
     TM.concat
     (PRF.const symbolMark)
     (PRF.comp2
-      post
+      TM.preFromRight
       (PRF.const symbolMark)
       (PRF.comp2
         pre
@@ -681,4 +698,4 @@ end PRF
 
 open PRF.TM
 def main : IO Unit :=
-  IO.println s!"{PRF.eval TM.pre (Vector.fromList [2, 12])}"
+  IO.println s!"{PRF.eval PRF.PRF.add (Vector.fromList [2, 1])}"
