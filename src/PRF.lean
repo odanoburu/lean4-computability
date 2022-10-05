@@ -1,15 +1,15 @@
 open Nat
 
 structure Vector (n : Nat) (α : Type u) where
-  val  : List α
-  hasLen : List.length val = n
+  val  : Array α
+  hasLen : val.size = n
 
 @[specialize] def Vector.get {α : Type u} : (as : Vector n α) → Fin n → α
   | xs, {val := i, isLt} =>
-    -- List.length xs.val = n, n <= n → n <= List.length xs.val
-    List.get xs.val {val := i, isLt := Nat.le_trans isLt (Eq.subst (Eq.symm xs.hasLen) Nat.le.refl)}
+    -- length xs.val = n, n <= n → n <= length xs.val
+    Array.get xs.val {val := i, isLt := Nat.le_trans isLt (Eq.subst (Eq.symm xs.hasLen) Nat.le.refl)}
 
-@[specialize] def Vector.fromList {α : Type u} : (as : List α) → Vector (List.length as) α
+@[specialize] def Vector.fromArray {α : Type u} : (as : Array α) → Vector as.size α
   | xs => {val := xs, hasLen := rfl}
 
 @[specialize] def Vector.enumeration {α : Type u} : Vector n α → (Fin n → α)
@@ -114,20 +114,22 @@ def PRF.const {k : Nat} : Nat → PRF k
   | n+1 =>
       PRF.comp1 PRF.succ (@PRF.const k n)
 
+--#eval eval (PRF.const 4) (Vector.fromArray #[23,4])
+
 def PRF.add : PRF 2 :=
   PRF.primrec
     PRF.identity
     (PRF.comp1 PRF.succ PRF.first)
 
---#eval eval PRF.add (Vector.fromList [3, 2])
+--#eval eval PRF.add (Vector.fromArray #[3, 2])
 
 def PRF.mul : PRF 2 :=
   PRF.primrec
     (PRF.const 0)
     (PRF.comp2 PRF.add (PRF.proj 0) (PRF.proj 2))
 
---#eval eval PRF.mul (Vector.fromList [3, 0])
---#eval eval PRF.mul (Vector.fromList [3, 4])
+--#eval eval PRF.mul (Vector.fromArray #[3, 0])
+--#eval eval PRF.mul (Vector.fromArray #[3, 4])
 
 def PRF.exp : PRF 2 :=
   PRF.comp2
@@ -137,24 +139,24 @@ def PRF.exp : PRF 2 :=
     PRF.second
     PRF.first
 
--- #eval eval PRF.exp (Vector.fromList [0, 0])
--- #eval eval PRF.exp (Vector.fromList [0, 1])
--- #eval eval PRF.exp (Vector.fromList [10, 0])
---#eval eval PRF.exp (Vector.fromList [10, 2])
+-- #eval eval PRF.exp (Vector.fromArray #[0, 0])
+-- #eval eval PRF.exp (Vector.fromArray #[0, 1])
+-- #eval eval PRF.exp (Vector.fromArray #[10, 0])
+--#eval eval PRF.exp (Vector.fromArray #[10, 2])
 
 def PRF.pred : PRF 1 :=
   PRF.primrec (PRF.const 0) PRF.second
 
--- #eval eval PRF.pred (Vector.fromList [2])
+-- #eval eval PRF.pred (Vector.fromArray #[2])
 
 def PRF.signal : PRF 1 :=
   PRF.primrec
     (PRF.const 0)
     (PRF.const 1)
 
---#eval eval PRF.signal (Vector.fromList [0])
---#eval eval PRF.signal (Vector.fromList [1])
--- #eval eval PRF.signal (Vector.fromList [20])
+--#eval eval PRF.signal (Vector.fromArray #[0])
+--#eval eval PRF.signal (Vector.fromArray #[1])
+-- #eval eval PRF.signal (Vector.fromArray #[20])
 
 def PRF.le : PRF 2 :=
   PRF.comp1 PRF.signal
@@ -162,16 +164,16 @@ def PRF.le : PRF 2 :=
       (PRF.comp1 PRF.succ PRF.first)
       (PRF.comp1 PRF.pred PRF.first))
 
--- #eval eval PRF.le (Vector.fromList [9, 10])
--- #eval eval PRF.le (Vector.fromList [10, 10])
--- #eval eval PRF.le (Vector.fromList [2, 1])
+-- #eval eval PRF.le (Vector.fromArray #[9, 10])
+-- #eval eval PRF.le (Vector.fromArray #[10, 10])
+-- #eval eval PRF.le (Vector.fromArray #[2, 1])
 
 def PRF.lt : PRF 2 :=
   PRF.comp2 PRF.le (PRF.comp1 PRF.succ PRF.first) PRF.second
 
---#eval eval PRF.lt (Vector.fromList [9, 10])
---#eval eval PRF.lt (Vector.fromList [10, 10])
---#eval eval PRF.lt (Vector.fromList [2, 1])
+--#eval eval PRF.lt (Vector.fromArray #[9, 10])
+--#eval eval PRF.lt (Vector.fromArray #[10, 10])
+--#eval eval PRF.lt (Vector.fromArray #[2, 1])
 
 def PRF.not : PRF 1 :=
   PRF.primrec
@@ -185,7 +187,7 @@ def PRF.if : PRF k → PRF k → PRF k → PRF k
       (PRF.comp2 PRF.mul (PRF.comp1 PRF.signal t) f)
       (PRF.comp2 PRF.mul (PRF.comp1 PRF.not t) g)
 
---#eval eval (PRF.if PRF.first PRF.first PRF.not) (Vector.fromList [0])
+--#eval eval (PRF.if PRF.first PRF.first PRF.not) (Vector.fromArray #[0])
 
 def PRF.or : PRF 2 :=
   PRF.comp1 PRF.signal (PRF.comp2 PRF.add PRF.first PRF.second)
@@ -193,7 +195,7 @@ def PRF.or : PRF 2 :=
 def PRF.and : PRF 2 :=
   PRF.comp2 PRF.mul (PRF.comp1 PRF.signal PRF.first) (PRF.comp1 PRF.signal PRF.second)
 
--- #eval eval PRF.and (Vector.fromList [2, 0])
+-- #eval eval PRF.and (Vector.fromArray #[2, 0])
 
 def PRF.eq : PRF 2 :=
   PRF.comp2
@@ -201,9 +203,9 @@ def PRF.eq : PRF 2 :=
     PRF.le
     (PRF.comp2 PRF.le PRF.second PRF.first)
 
---#eval eval PRF.eq (Vector.fromList [0, 1])
---#eval eval PRF.eq (Vector.fromList [11, 11])
---#eval eval PRF.eq (Vector.fromList [2, 1])
+--#eval eval PRF.eq (Vector.fromArray #[0, 1])
+--#eval eval PRF.eq (Vector.fromArray #[11, 11])
+--#eval eval PRF.eq (Vector.fromArray #[2, 1])
 
 def PRF.fixFirst : PRF k → PRF (k + 1) → PRF k
   | z, f =>
@@ -237,7 +239,7 @@ def PRF.dropNth : Nat → PRF k → PRF (k + 1)
                  , isLt := Nat.succ_le_succ iLt
                  })
 
---#eval eval (PRF.dropNth 0 PRF.le) (Vector.fromList [4, 5 , 3])
+--#eval eval (PRF.dropNth 0 PRF.le) (Vector.fromArray #[4, 5 , 3])
 
 def PRF.mapNth : Nat → PRF k → PRF k → PRF k
   | i, g, f =>
@@ -273,7 +275,7 @@ def PRF.firstLEsat : PRF (k + 1) → PRF k → PRF k
             (PRF.comp1 PRF.succ <| PRF.comp1 PRF.succ PRF.second)
             (PRF.const 0)))))
 
---#eval eval (@PRF.firstLEsat 0 (PRF.comp2 PRF.le (PRF.const 5) PRF.first) (PRF.const 10)) (Vector.fromList [1])
+--#eval eval (@PRF.firstLEsat 0 (PRF.comp2 PRF.le (PRF.const 5) PRF.first) (PRF.const 10)) (Vector.fromArray #[1])
 
 def PRF.disjunction : PRF (k + 1) → PRF (k + 1)
 -- disjunction(p, n, x₁, ..., xₙ) = { 1 if p(i, n, x₁, ..., xₙ) for some i <= n; 0 otherwise}
@@ -289,7 +291,7 @@ def PRF.disjunction : PRF (k + 1) → PRF (k + 1)
             (PRF.dropNth 0 p))))
       p
 
---#eval eval (@PRF.disjunction 0 (PRF.comp2 PRF.le (PRF.const 13) PRF.first)) (Vector.fromList [0])
+--#eval eval (@PRF.disjunction 0 (PRF.comp2 PRF.le (PRF.const 13) PRF.first)) (Vector.fromArray #[0])
 
 def PRF.limMin : PRF (k + 1) → PRF k → PRF k
   -- (μ z ≤ g(x₁, ..., xₙ))[h(z, x₁, ..., xₙ) > 0]
@@ -299,7 +301,7 @@ def PRF.limMin : PRF (k + 1) → PRF k → PRF k
 --         (PRF.limMin
 --           (PRF.comp2 PRF.le (PRF.const 3) PRF.first)
 --           (@PRF.comp2 1 PRF.add PRF.first (PRF.const 1)))
---         (Vector.fromList [2])
+--         (Vector.fromArray #[2])
 
 namespace TM
 
@@ -459,7 +461,7 @@ def TM.len : PRF 1 :=
     (PRF.comp2 PRF.lt PRF.second (PRF.comp2 PRF.exp (PRF.const k) PRF.first))
     PRF.identity
 
---#eval eval TM.len (Vector.fromList [10])
+--#eval eval TM.len (Vector.fromArray #[10])
 
 def TM.concat : PRF 2 :=
   -- w₁.w₂ = w₁*k^len(w₂) + w₂
@@ -474,7 +476,7 @@ def TM.concat : PRF 2 :=
         (PRF.comp1 len PRF.second)))
     PRF.second
 
---#eval eval (TM.concat 10) (Vector.fromList [1, 1])
+--#eval eval TM.concat (Vector.fromArray #[1, 1])
 
 def TM.pre : PRF 2 :=
   -- pre(w₁, w) = z s.t. ∃z,∃i, z.w₁.i = w
@@ -491,7 +493,7 @@ def TM.pre : PRF 2 :=
       PRF.third /- w again -/)
     PRF.second
 
---#eval eval TM.pre (Vector.fromList [2, 12])
+--#eval eval TM.pre (Vector.fromArray #[2, 12])
 
 def TM.preFromRight : PRF 2 :=
   -- preᵣ(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
@@ -519,7 +521,7 @@ def TM.isPrefix : PRF 2 :=
           PRF.first))
     PRF.second
 
---#eval eval TM.isPrefix (Vector.fromList [1, 11])
+--#eval eval TM.isPrefix (Vector.fromArray #[1, 11])
 
 def TM.substring : PRF 2 :=
   PRF.if
@@ -527,7 +529,7 @@ def TM.substring : PRF 2 :=
     TM.isPrefix
     (PRF.const 1)
 
---#eval eval TM.substring (Vector.fromList [1, 12])
+--#eval eval TM.substring (Vector.fromArray #[1, 12])
 
 def TM.post : PRF 2 :=
   -- post(w₁, w) = z s.t. ∃z,∃i, i.w₁.z = w
@@ -546,7 +548,7 @@ def TM.post : PRF 2 :=
 --                                       [n, m] :=
 --   _
 
---#eval eval TM.pre (Vector.fromList [2, 11])
+--#eval eval TM.pre (Vector.fromArray #[2, 11])
 
 def TM.subst : PRF 3 :=
   -- subst(w₁, w₂, w) = if substring(w₁, w) then w[w₁ ← w₂] else w
@@ -558,7 +560,7 @@ def TM.subst : PRF 3 :=
       (PRF.comp2 concat PRF.second (PRF.comp2 post PRF.first PRF.third)))
     PRF.third
 
---#eval eval (TM.subst 10) (Vector.fromList [2, 1, 121])
+--#eval eval (TM.subst 10) (Vector.fromArray #[2, 1, 121])
 
 def TM.state : PRF 1 :=
   -- get current TM state
@@ -698,4 +700,4 @@ end PRF
 
 open PRF.TM
 def main : IO Unit :=
-  IO.println s!"{PRF.eval PRF.PRF.add (Vector.fromList [2, 1])}"
+  IO.println s!"{PRF.eval TM.len (Vector.fromArray #[10])}"
