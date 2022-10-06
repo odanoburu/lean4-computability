@@ -99,6 +99,13 @@ def PRF.comp4 : PRF 4 → PRF k → PRF k → PRF k → PRF k → PRF k
 
 def PRF.identity : PRF 1 := PRF.proj 0
 
+theorem comp1id :
+  eval f m =
+    eval
+      (PRF.comp1 f PRF.identity)
+      (Vector.fromArray #[n]) :=
+  sorry
+
 def PRF.first : PRF (n + 1) := PRF.proj 0
 
 def PRF.second : PRF (n + 2) := PRF.proj 1
@@ -365,17 +372,18 @@ def TM.encode : TuringMachine → Nat
   -- current state goes in the tape instead
   | tm =>
     String.toNat! <|
-      String.join
-        [ encodeState tm.finalState
-        , String.intercalate
-            (toString stepMark)
-            (List.map encodeStep tm.rules)
-        ]
+    encodeState tm.finalState
+    ++ String.intercalate
+         (toString stepMark)
+         (List.map encodeStep tm.rules)
+
   where
+    encodeUnary : Nat → String
+    | n => String.join (List.replicate n "1")
     encodeState : Nat → String
-    | st => toString stateMark ++ toString st
+    | st => toString stateMark ++ encodeUnary st
     encodeSymbol : Nat → String
-    | sy => toString symbolMark ++ toString sy
+    | sy => toString symbolMark ++ encodeUnary sy
     encodeMove : Move → String
     | m => toString
         <| match m with
@@ -411,7 +419,7 @@ def TM.unarySucc : TuringMachine :=
   , finalState := 1
   }
 
---#eval TM.encode TM.unarySucc
+-- #eval TM.encode TM.unarySucc
 
 def TM.binarySucc : TuringMachine :=
   { rules :=
@@ -543,10 +551,12 @@ def TM.post : PRF 2 :=
       PRF.second)
     (PRF.const 0)
 
--- theorem pre_post_concat_eq : m =
---                              eval (PRF.comp2 TM.concat TM.pre (PRF.comp2 TM.concat PRF.first TM.post))
---                                       [n, m] :=
---   _
+theorem pre_post_concat_eq :
+  m =
+    eval
+      (PRF.comp2 TM.concat TM.pre (PRF.comp2 TM.concat PRF.first TM.post))
+      (Vector.fromArray #[n, m]) :=
+  sorry
 
 --#eval eval TM.pre (Vector.fromArray #[2, 11])
 
