@@ -154,7 +154,7 @@ def PRF.exp : PRF 2 :=
 def PRF.pred : PRF 1 :=
   PRF.primrec (PRF.const 0) PRF.second
 
--- #eval eval PRF.pred (Vector.fromArray #[2])
+--#eval eval PRF.pred (Vector.fromArray #[2])
 
 def PRF.signal : PRF 1 :=
   PRF.primrec
@@ -419,7 +419,7 @@ def TM.unarySucc : TuringMachine :=
   , finalState := 1
   }
 
--- #eval TM.encode TM.unarySucc
+#eval TM.encode TM.unarySucc
 
 def TM.binarySucc : TuringMachine :=
   { rules :=
@@ -566,7 +566,7 @@ def TM.subst : PRF 3 :=
     (PRF.comp2 TM.substring PRF.first PRF.third)
     (PRF.comp2
       concat
-      (PRF.comp2 pre PRF.first PRF.second)
+      (PRF.comp2 pre PRF.first PRF.third)
       (PRF.comp2 concat PRF.second (PRF.comp2 post PRF.first PRF.third)))
     PRF.third
 
